@@ -10,20 +10,25 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.app.Fragment;
 import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.ImageView;
 
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdate;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptor;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.LatLngBounds;
+import com.google.android.gms.maps.model.MarkerOptions;
 
 import java.io.IOException;
 import java.util.List;
@@ -31,11 +36,14 @@ import java.util.List;
 /**
  * @author Markin Andrey on 15.08.2017.
  */
-public class LocatrFragment extends Fragment {
+public class LocatrFragment extends SupportMapFragment {
     public static final String TAG = "LocatrFragment";
-    private ImageView mImageView;
     private GoogleApiClient mClient;
     private ProgressDialog mProgressDialog;
+    private Bitmap mMapImage;
+    private GalleryItem mMapItem;
+    private Location mCurrentyLocation;
+    private GoogleMap mMap;
 
     public static LocatrFragment newInstance() {
         Bundle args = new Bundle();
@@ -49,7 +57,10 @@ public class LocatrFragment extends Fragment {
         super.onCreate(savedInstanceState);
         setHasOptionsMenu(true);
         ActivityCompat.requestPermissions(getActivity(), new String[] {Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.INTERNET},1);
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.INTERNET,
+                Manifest.permission.ACCESS_NETWORK_STATE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
 
         mClient = new GoogleApiClient.Builder(getActivity())
                 .addApi(LocationServices.API)
@@ -64,6 +75,14 @@ public class LocatrFragment extends Fragment {
                     }
                 })
                 .build();
+
+        getMapAsync(new OnMapReadyCallback() {
+            @Override
+            public void onMapReady(GoogleMap googleMap) {
+                mMap = googleMap;
+                updateUi();
+            }
+        });
     }
 
     @Override
@@ -73,13 +92,6 @@ public class LocatrFragment extends Fragment {
         mClient.connect();
     }
 
-    @Nullable
-    @Override
-    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        View view = inflater.inflate(R.layout.fragment_locatr, container, false);
-        mImageView = (ImageView) view.findViewById(R.id.image);
-        return view;
-    }
 
     @Override
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
@@ -125,7 +137,36 @@ public class LocatrFragment extends Fragment {
                 android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             return;
         }
+    }
 
+    private void updateUi(){
+        if (mMap==null || mMapImage == null){
+            return;
+        }
+
+        LatLng itemPoint = new LatLng(mMapItem.getLat(), mMapItem.getLon());
+        LatLng myPoint = new LatLng(mCurrentyLocation.getLatitude(), mCurrentyLocation.getLongitude());
+
+        BitmapDescriptor itemBitmap = BitmapDescriptorFactory.fromBitmap(mMapImage);
+
+        MarkerOptions itemMarker = new MarkerOptions()
+                .position(itemPoint)
+                .icon(itemBitmap);
+        MarkerOptions myMarker = new MarkerOptions()
+                .position(myPoint);
+
+        mMap.clear();
+        mMap.addMarker(itemMarker);
+        mMap.addMarker(myMarker);
+
+        LatLngBounds bounds = new LatLngBounds.Builder()
+                .include(itemPoint)
+                .include(myPoint)
+                .build();
+
+        int margin = getResources().getDimensionPixelSize(R.dimen.map_inset_margin);
+        CameraUpdate update = CameraUpdateFactory.newLatLngBounds(bounds,margin);
+        mMap.animateCamera(update);
     }
 
     @Override
@@ -137,9 +178,11 @@ public class LocatrFragment extends Fragment {
     private class SearchTask extends AsyncTask<Location, Void, Void>{
         private GalleryItem mGalleryItem;
         private Bitmap mBitmap;
+        private Location mLocation;
 
         @Override
         protected Void doInBackground(Location... locations) {
+            mLocation = locations[0];
             FlickrFetchr fetchr = new FlickrFetchr();
             List<GalleryItem> items = fetchr.searchPhotos(locations[0]);
             if (items.isEmpty()){
@@ -160,7 +203,10 @@ public class LocatrFragment extends Fragment {
 
         @Override
         protected void onPostExecute(Void aVoid) {
-            mImageView.setImageBitmap(mBitmap);
+            mMapImage = mBitmap;
+            mMapItem = mGalleryItem;
+            mCurrentyLocation = mLocation;
+            updateUi();
             mProgressDialog.dismiss();
         }
     }
